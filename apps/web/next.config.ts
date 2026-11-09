@@ -2,6 +2,8 @@ import type { NextConfig } from 'next'
 import path from 'node:path'
 const config: NextConfig = {
   poweredByHeader: false,
+  // Trace a complete server package so hosting can start without the source tree.
+  output: 'standalone',
   turbopack: { root: path.resolve(process.cwd(), '../..') },
   outputFileTracingRoot: path.resolve(process.cwd(), '../..'),
   // The generated .env.production contains only cloud resource references.

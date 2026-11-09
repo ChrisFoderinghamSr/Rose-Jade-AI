@@ -13,6 +13,7 @@ applications:
         build:
           commands:
             - npm run build
+            - npm run test:package
       artifacts:
         baseDirectory: apps/web/.next
         files:
