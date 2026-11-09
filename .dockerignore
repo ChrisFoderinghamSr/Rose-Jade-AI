@@ -1,0 +1,11 @@
+**/node_modules
+**/.next
+.git
+**/.local
+**/.env
+**/.env.*
+.env.production
+**/*.log
+models/cache
+models/downloads
+models/*.gguf

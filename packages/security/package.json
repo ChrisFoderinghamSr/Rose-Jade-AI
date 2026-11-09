@@ -1,0 +1,6 @@
+{
+  "name": "@rose-jade/security",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Rose Jade security controls."
+}

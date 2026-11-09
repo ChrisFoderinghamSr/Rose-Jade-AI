@@ -1,0 +1,3 @@
+# Types
+
+Shared application types.

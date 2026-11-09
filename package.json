@@ -1,0 +1,29 @@
+{
+  "name": "rose-jade-ai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Rose Jade AI — an independently engineered conversational AI platform.",
+  "license": "UNLICENSED",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=@rose-jade/web",
+    "start": "npm run start --workspace=@rose-jade/web",
+    "build": "npm run build --workspace=@rose-jade/web",
+    "typecheck": "npm run typecheck --workspace=@rose-jade/web",
+    "test": "node --test tests/*.test.mjs",
+    "accounts": "node scripts/owner-access.mjs",
+    "format": "prettier --write apps/web packages/*/src tests scripts",
+    "format:check": "prettier --check apps/web packages/*/src tests scripts"
+  },
+  "engines": {
+    "node": ">=24.0.0",
+    "npm": ">=10.0.0"
+  },
+  "devDependencies": {
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.2"
+  }
+}

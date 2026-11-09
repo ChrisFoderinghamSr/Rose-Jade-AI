@@ -1,0 +1,6 @@
+{
+  "name": "@rose-jade/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Core Rose Jade AI application logic."
+}

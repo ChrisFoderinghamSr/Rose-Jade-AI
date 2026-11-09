@@ -1,0 +1,62 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+.yarn/
+
+# Build output
+dist/
+build/
+coverage/
+.next/
+.vite/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Local AI models
+models/*.gguf
+models/*.safetensors
+models/*.bin
+models/*.pt
+models/*.pth
+models/*.onnx
+
+# Local model/runtime data
+models/cache/
+models/downloads/
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+
+# Temporary files
+tmp/
+temp/
+
+# Secrets
+*.pem
+*.key
+*.crt
+secrets/
+private/
+
+# Personal assistant runtime data (never publish)
+.local/
+*.tsbuildinfo
