@@ -1,3 +1,3 @@
-# Model licensing
+# Cloud AI
 
-No model weights are included. Local Ollama models require separate license review by the operator. Cloud models use the configured provider account under its terms. Rose Jade's app license does not grant rights to any third-party model. Demo mode is original deterministic template logic, not a model.
+Rose Jade uses the configured OpenAI cloud account and model under its provider terms. No model weights, Ollama adapter or offline AI provider is bundled. The proprietary application license grants no separate model rights.

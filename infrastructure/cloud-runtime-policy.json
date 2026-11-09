@@ -1,0 +1,29 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AuroraDataAPI",
+      "Effect": "Allow",
+      "Action": [
+        "rds-data:ExecuteStatement",
+        "rds-data:BeginTransaction",
+        "rds-data:CommitTransaction",
+        "rds-data:RollbackTransaction"
+      ],
+      "Resource": [
+        "REPLACE_WITH_RDS_CLUSTER_ARN"
+      ]
+    },
+    {
+      "Sid": "ApplicationAndDatabaseSecrets",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetSecretValue"
+      ],
+      "Resource": [
+        "REPLACE_WITH_RDS_SECRET_ARN",
+        "REPLACE_WITH_APP_CONFIG_SECRET_ARN"
+      ]
+    }
+  ]
+}

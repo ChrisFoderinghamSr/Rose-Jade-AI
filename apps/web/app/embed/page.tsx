@@ -1,11 +1,9 @@
 import { publicOpen, db, parseRecord } from '../../../../packages/core/src/db.mjs'
 export const dynamic = 'force-dynamic'
-export default function Embed() {
-  const open = publicOpen()
+export default async function Embed() {
+  const open = await publicOpen()
   const items = open
-    ? db()
-        .prepare("SELECT title,fields FROM records WHERE kind='portfolio'")
-        .all()
+    ? (await db().prepare("SELECT title,fields FROM records WHERE kind='portfolio'").all())
         .map(parseRecord)
         .filter((r: any) => r.fields.published)
     : []

@@ -5,7 +5,4 @@ services:
     env_file: .env.production
     ports:
       - "127.0.0.1:3120:3120"
-    volumes:
-      - rose-data:/data
-volumes:
-  rose-data:
+# No database volume: all application persistence uses the configured Aurora service.

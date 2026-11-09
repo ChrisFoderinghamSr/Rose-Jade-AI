@@ -9,12 +9,14 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "next": "16.4.5",
+    "next": "15.5.29",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "docx": "latest",
     "pdf-lib": "latest",
-    "nodemailer": "latest"
+    "nodemailer": "latest",
+    "@aws-sdk/client-rds-data": "latest",
+    "@aws-sdk/client-secrets-manager": "latest"
   },
   "devDependencies": {
     "@types/node": "latest",

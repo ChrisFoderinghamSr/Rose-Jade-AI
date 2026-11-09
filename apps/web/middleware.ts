@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server'
-export function proxy(request: NextRequest) {
+export function middleware(request: NextRequest) {
   const response = NextResponse.next()
   const embed = request.nextUrl.pathname === '/embed'
   const allowed = (process.env.EMBED_ORIGINS || '')
@@ -21,4 +21,7 @@ export function proxy(request: NextRequest) {
   if (!embed) response.headers.set('X-Frame-Options', 'DENY')
   return response
 }
-export const config = { matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'] }
+export const config = {
+  runtime: 'nodejs',
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+}

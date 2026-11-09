@@ -1,0 +1,15 @@
+// PostgreSQL schema; applied by an operator, never stored on an Amplify disk.
+export const schemaStatements = [
+  "CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,email TEXT UNIQUE NOT NULL,password TEXT NOT NULL,role TEXT NOT NULL,profile TEXT NOT NULL,plan TEXT NOT NULL DEFAULT 'free',subscription TEXT,created TEXT NOT NULL)",
+  'CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY,user_id TEXT REFERENCES users(id),expires BIGINT NOT NULL)',
+  'CREATE TABLE IF NOT EXISTS limits(key TEXT PRIMARY KEY,count INTEGER NOT NULL,reset BIGINT NOT NULL)',
+  'CREATE TABLE IF NOT EXISTS threads(id TEXT PRIMARY KEY,user_id TEXT REFERENCES users(id),title TEXT NOT NULL,created TEXT NOT NULL)',
+  'CREATE TABLE IF NOT EXISTS messages(id TEXT PRIMARY KEY,user_id TEXT REFERENCES users(id),thread_id TEXT REFERENCES threads(id) ON DELETE CASCADE,role TEXT NOT NULL,content TEXT NOT NULL,provider TEXT NOT NULL,created TEXT NOT NULL)',
+  'CREATE TABLE IF NOT EXISTS memories(id TEXT PRIMARY KEY,user_id TEXT REFERENCES users(id),content TEXT NOT NULL,category TEXT NOT NULL,status TEXT NOT NULL,source TEXT NOT NULL,cloud INTEGER NOT NULL DEFAULT 0,created TEXT NOT NULL)',
+  'CREATE TABLE IF NOT EXISTS records(id TEXT PRIMARY KEY,user_id TEXT REFERENCES users(id),kind TEXT NOT NULL,title TEXT NOT NULL,fields TEXT NOT NULL,status TEXT NOT NULL,revision INTEGER NOT NULL DEFAULT 1,created TEXT NOT NULL,updated TEXT NOT NULL)',
+  'CREATE TABLE IF NOT EXISTS artifacts(id TEXT PRIMARY KEY,user_id TEXT REFERENCES users(id),title TEXT NOT NULL,content TEXT NOT NULL,format TEXT NOT NULL,provider TEXT NOT NULL,created TEXT NOT NULL)',
+  'CREATE TABLE IF NOT EXISTS submissions(id TEXT PRIMARY KEY,user_id TEXT REFERENCES users(id),form_id TEXT REFERENCES records(id) ON DELETE CASCADE,answers TEXT NOT NULL,created TEXT NOT NULL)',
+  'CREATE TABLE IF NOT EXISTS audit(id TEXT PRIMARY KEY,user_id TEXT REFERENCES users(id),action TEXT NOT NULL,target TEXT NOT NULL,created TEXT NOT NULL)',
+  'CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)',
+  'CREATE TABLE IF NOT EXISTS billing_events(id TEXT PRIMARY KEY,created TEXT NOT NULL)',
+]

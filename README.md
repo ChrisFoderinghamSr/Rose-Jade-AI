@@ -1,71 +1,53 @@
-# Rose Jade AI™
+# Rose Jade AI™ — cloud-only
 
-An original personal-assistant workspace by Christian Foderingham. Rose Jade is an AI character, not a human. The app supports private conversations, explicit memory review, practical planning, file creation and optional PayPal subscriptions.
+An original personal AI workspace by Christian Foderingham. Rose Jade is a fictional AI character, not a human. The app provides private conversations, explicitly reviewed memory, planning tools, document/code exports and optional PayPal subscriptions.
 
-Deployment target: **https://RoseJade.chrisfoderingham.com**. A Git push does not itself verify that the hostname is serving this app; see deployment instructions for your hosting pipeline.
+Target domain: **https://RoseJade.chrisfoderingham.com**.
 
-## Run on Windows
+## Cloud architecture
 
-Requires Node.js **24+** and npm. Node SQLite is used for persistent local data.
+- **Website/API:** Next.js 15.5.29 and Node.js 22+, configured for AWS Amplify Hosting.
+- **Persistent data:** Aurora PostgreSQL through the AWS RDS Data API over HTTPS. Accounts, sessions, memories, messages, records, files and subscriptions stay in the cloud database.
+- **AI:** server-side OpenAI Responses API only, with explicit per-user cloud consent and separately approved shared memory.
+- **Secrets:** AWS Secrets Manager, accessed using the host's AWS role. No keys are exposed in the browser or copied into repository source.
+- **Payments:** PayPal subscription approval, provider-verified webhooks and explicit cancellation.
+
+**There is no SQLite runtime, Ollama connection, offline model, demo AI reply or generated local owner-password file.** Missing cloud configuration returns an error; the app never substitutes an offline answer. Files can still be downloaded by the user, and exact-content file creation does not require a model request.
+
+## Deployment steps
+
+1. Follow [CLOUD-SETUP.md](docs/CLOUD-SETUP.md) to supply an Aurora PostgreSQL cluster with Data API, a database credential secret and an application configuration secret. These are paid/external resources; this repository does not create them automatically.
+2. Initialize the cloud schema and first owner account using the protected operator command: npm run db:migrate. Existing local SQLite data is not automatically imported or deleted.
+3. In Amplify select repository main, mark it as a monorepo and use **apps/web**. The committed amplify.yml supplies install/build/output settings.
+4. Configure the non-secret resource references and an SSR compute role using the guide. Build settings alone are not a working database.
+5. Deploy and verify the Amplify HTTPS address before connecting the custom hostname. Configure AI and PayPal sandbox before enabling live service.
+
+## Develop and verify
+
+Requires Node.js 22+ and npm. Local development runs the web server, but its application data/AI still require configured cloud services. Tests use a separate PostgreSQL engine and controlled cloud mocks; they do not enable a local production-storage mode.
 
 ```powershell
 cd C:\Portfolio-Projects\Rose-Jade-AI
 npm.cmd ci
-npm.cmd run accounts
-npm.cmd run dev
-```
-
-Visit http://127.0.0.1:3120. The accounts command creates an owner account with a unique generated password on first use. Credentials live in ignored .local/owner-access.json. Never publish that file. New users can register during the temporary public-access window; every account has a separate private workspace.
-
-```powershell
 npm.cmd run build
 npm.cmd run typecheck
 npm.cmd test
-npm.cmd start
 ```
 
-The root commands now run the working apps/web Next.js application. It contains the HTTP backend and account interface; the original apps/api and apps/admin directories remain architectural placeholders, not separately running services. Shared implementation lives in packages/core, packages/security and packages/ai. Existing Git origin and modular folders are retained.
+For development, place cloud references in apps/web/.env.local, authenticate your AWS SDK environment using your own authorized AWS profile, then run npm.cmd run dev. For the standalone migration/check commands, export the variables in your shell; these scripts do not automatically load the Next.js environment file. Never paste real keys into chat or commit them.
 
-## Capabilities and honest boundaries
+## Included workflows
 
-| Area | Working implementation | External setup / limitation |
-|---|---|---|
-| Chat | Private threads, saved messages, separate account data | Demo templates by default; configure Ollama or OpenAI for actual open-ended AI |
-| Voice | Explicit browser dictation and optional speech playback | Browser support/permission required; speech provider may receive audio; not an always-listening avatar |
-| Personal learning | Pending memory proposals, approve/edit/reject/forget, goals and tone | Context personalization, not model-weight training or autonomous personality inference |
-| Email | Private drafts, review, .eml exports, guarded SMTP send path | SMTP setup and allowlisted recipients required; sending is owner-only; no mailbox read/sync integration |
-| Planning | Tasks, events, statuses and ICS calendar export | No Google/Microsoft live calendar sync |
-| Portfolio | Private projects; explicit public title/summary/link sharing | HTTPS deployment and frame-origin allowlist required for external embedding |
-| Live chats | Private conversation transcripts and follow-up notes | No external live-chat messaging network is connected |
-| Forms | Private form questions, stored responses, data export | No automated third-party form submission |
-| Files | Markdown, text, DOCX, PDF, CSV, JSON, HTML, Python, JS and TS exports | Generated programs never execute; all outputs need review; PDF has a basic Latin-1 font |
-| Decisions | Structured option/constraint/jurisdiction prompts | No live legal research, universal outcome guarantee or absolute protection promise |
-| Membership | $5 / $15 / $30 monthly plan previews, PayPal approval/webhook/cancellation adapters | No charges until server PayPal settings and real plans are configured |
+Private accounts; cloud chat threads; voice-to-editable-text input with consent; optional speech playback; Pending/Approved/Rejected memory with editing and deletion; tasks; email drafts and guarded owner-only SMTP; calendar event/ICS exports; portfolio entries and a read-only public widget; private forms/responses; live-chat notes; DOCX/PDF/text/data/code exports; decision comparisons; user-scoped exports, history clearing and workspace erasure; PayPal $5/$15/$30 monthly offers.
 
-Every logged-in account has the workspace tools. Free access has a small configured cloud-request allowance; paid plans increase it. Owner access bypasses that app quota. Cloud model cost is billed separately by the AI provider to the configured server account. The prices are product configuration, not a cost/profitability guarantee.
+Voice uses the browser's speech service, which may transmit audio to its provider. It is not an always-listening avatar. “Learning” means approved context, not model retraining or hidden profiling. External mailbox/calendar/live-chat sync is not implemented. No model gets code-execution or unattended external-action powers. Model responses and legal/rights comparisons require human verification.
 
-## AI setup
+Temporary public portfolio viewing/registration is **closed by default** unless PUBLIC_ACCESS_UNTIL is a future timestamp. Visitors do not get unauthenticated AI requests. Existing users can sign in after the public window closes. Logged-in free and paid users share the workspace features, with different cloud-request allowances.
 
-Copy .env.example to apps/web/.env.local and fill only needed settings. Keep keys on the server. Local option: install a separately licensed model in Ollama and set OLLAMA_MODEL; the app only contacts loopback Ollama URLs. Cloud option: set OPENAI_API_KEY and OPENAI_MODEL, then explicitly enable cloud sharing in Privacy & profile. No model is silently substituted if the selected provider fails.
-
-Approved memories are available to the local model. Cloud AI gets only approved memories individually marked for cloud use, plus the current prompt, recent conversation and configured name/goals/style after global cloud consent. Cloud requests use the Responses API with store:false; this does not override provider security/abuse-retention policies.
-
-## Try the workflows
-
-1. Chat: “Remember that I prefer concise answers.” Review the Pending memory and approve it. Ask “What do you remember about me?” in local demo mode.
-2. Add a task, event, email draft and portfolio entry in Workbench. Export the calendar as ICS and the email as MIME. Neither export sends anything.
-3. Create a private form, fill it and export private data to retrieve its stored answers. Editing the form preserves responses; keep questions stable after responses or create a new form version.
-4. In Create, paste your own content for exact exports or choose a configured model for generation. Download Word and PDF versions. Demo generation is a labeled planning template.
-5. Review cloud and microphone consent. Export private data, clear history or erase workspace data using the required typed phrases. Login/payment records remain.
-6. Preview a monthly plan. Unconfigured PayPal creates no subscription and takes no payment.
+Paid plans remain previews until PayPal is configured. No card data is collected by Rose Jade. Real provider costs, hosting and billing require separate operator configuration and acceptance testing.
 
 ## Documentation
 
-- [Architecture](docs/ARCHITECTURE.md)
-- [Deployment](docs/DEPLOYMENT.md)
-- [PayPal billing](docs/PAYPAL.md)
-- [Provider setup](docs/PROVIDERS.md)
-- [Security](SECURITY.md) and [privacy](PRIVACY.md)
-- [Validation](docs/VALIDATION.md)
+[Cloud setup](docs/CLOUD-SETUP.md) · [Architecture](docs/ARCHITECTURE.md) · [AI/workflow providers](docs/PROVIDERS.md) · [PayPal](docs/PAYPAL.md) · [Security](SECURITY.md) · [Privacy](PRIVACY.md) · [Validation](docs/VALIDATION.md)
 
-The generated portrait is an original fictional AI character, not a photograph of the owner or a real assistant. Rose Jade AI uses ™; no registered trademark or completed legal registration is asserted.
+Source code and artwork are retained in Git. Branding uses ™; no completed trademark or copyright registration is asserted.

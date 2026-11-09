@@ -4,8 +4,23 @@ const config: NextConfig = {
   poweredByHeader: false,
   turbopack: { root: path.resolve(process.cwd(), '../..') },
   outputFileTracingRoot: path.resolve(process.cwd(), '../..'),
-  outputFileTracingExcludes: { '/*': ['../../.local/**/*', '../../.git/**/*', '../../**/.env*'] },
-  serverExternalPackages: ['nodemailer', 'docx', 'pdf-lib'],
+  // The generated .env.production contains only cloud resource references.
+  outputFileTracingExcludes: {
+    '/*': [
+      '../../.local/**/*',
+      '../../.git/**/*',
+      '../../**/.env.local',
+      '../../**/.env.*.local',
+      '../../.env*',
+    ],
+  },
+  serverExternalPackages: [
+    'nodemailer',
+    'docx',
+    'pdf-lib',
+    '@aws-sdk/client-rds-data',
+    '@aws-sdk/client-secrets-manager',
+  ],
   async headers() {
     return [
       {

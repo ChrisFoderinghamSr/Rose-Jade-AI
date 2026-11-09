@@ -94,7 +94,7 @@ export async function checkout(user, plan) {
     !['www.paypal.com', 'www.sandbox.paypal.com'].includes(url.hostname)
   )
     fail(502, 'Invalid PayPal approval destination.')
-  audit(user.id, 'paypal.approval', plan)
+  await audit(user.id, 'paypal.approval', plan)
   return { url: url.href }
 }
 export async function cancel(user, confirmation) {
@@ -108,8 +108,8 @@ export async function cancel(user, confirmation) {
     'POST',
     { reason: 'Cancelled by the authenticated subscriber in Rose Jade.' },
   )
-  db().prepare("UPDATE users SET plan='free' WHERE id=?").run(user.id)
-  audit(user.id, 'paypal.cancel', user.subscription)
+  await db().prepare("UPDATE users SET plan='free' WHERE id=?").run(user.id)
+  await audit(user.id, 'paypal.cancel', user.subscription)
   return {
     message:
       'PayPal accepted cancellation. Paid app access has ended; the private workspace remains.',
@@ -145,7 +145,7 @@ export async function webhook(request) {
     webhook_event: event,
   })
   if (verification.verification_status !== 'SUCCESS') fail(401, 'Invalid PayPal webhook signature.')
-  if (db().prepare('SELECT id FROM billing_events WHERE id=?').get(eventId))
+  if (await db().prepare('SELECT id FROM billing_events WHERE id=?').get(eventId))
     return { duplicate: true }
   const supported = [
     'BILLING.SUBSCRIPTION.ACTIVATED',
@@ -160,10 +160,9 @@ export async function webhook(request) {
     if (!/^[A-Za-z0-9-]+$/.test(identifier)) fail(400, 'Invalid subscription ID.')
     current = await call('/v1/billing/subscriptions/' + identifier, token)
   }
-  db().exec('BEGIN IMMEDIATE')
-  try {
+  return db().transaction(async () => {
     if (current) {
-      const user = db()
+      const user = await db()
         .prepare('SELECT * FROM users WHERE id=?')
         .get(typeof current.custom_id === 'string' ? current.custom_id : '')
       if (user) {
@@ -174,22 +173,17 @@ export async function webhook(request) {
         if (active && user.subscription && user.plan !== 'free' && user.subscription !== current.id)
           fail(409, 'A different active subscription is already assigned.')
         if (!active && user.subscription && user.subscription !== current.id) {
-          db().prepare('INSERT INTO billing_events VALUES(?,?)').run(eventId, now())
-          db().exec('COMMIT')
+          await db().prepare('INSERT INTO billing_events VALUES(?,?)').run(eventId, now())
           return { ignoredDifferentSubscription: true }
         }
         const next = active && plan ? plan.id : 'free'
-        db()
+        await db()
           .prepare('UPDATE users SET plan=?,subscription=? WHERE id=?')
           .run(next, current.id, user.id)
-        audit(user.id, 'paypal.subscription', next)
+        await audit(user.id, 'paypal.subscription', next)
       }
     }
-    db().prepare('INSERT INTO billing_events VALUES(?,?)').run(eventId, now())
-    db().exec('COMMIT')
+    await db().prepare('INSERT INTO billing_events VALUES(?,?)').run(eventId, now())
     return { received: true }
-  } catch (error) {
-    db().exec('ROLLBACK')
-    throw error
-  }
+  })
 }

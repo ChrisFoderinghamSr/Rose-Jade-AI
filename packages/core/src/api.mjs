@@ -1,4 +1,6 @@
+import { loadCloudConfig } from './cloud-config.mjs'
 import {
+  CloudConfigurationError,
   db,
   id,
   now,
@@ -101,6 +103,7 @@ function fieldsFor(kind, b) {
 }
 export default async function handle(r) {
   try {
+    await loadCloudConfig()
     const route = new URL(r.url).pathname.replace('/api/', ''),
       method = r.method
     if (route === 'billing/webhook' && method === 'POST') return reply(await webhook(r))
@@ -108,64 +111,51 @@ export default async function handle(r) {
     if (route === 'public' && method === 'GET') {
       db()
       return reply({
-        open: publicOpen(),
-        until: publicUntil(),
+        open: await publicOpen(),
+        until: await publicUntil(),
         plans,
         billingReady: billingReady(),
         domain: 'RoseJade.chrisfoderingham.com',
         provider: providerStatus(),
-        portfolios: publicOpen()
-          ? db()
-              .prepare("SELECT title,fields FROM records WHERE kind='portfolio'")
-              .all()
+        portfolios: (await publicOpen())
+          ? (await db().prepare("SELECT title,fields FROM records WHERE kind='portfolio'").all())
               .map(parseRecord)
               .filter((p) => p.fields.published)
               .map((p) => ({ title: p.title, summary: p.fields.summary, url: p.fields.url }))
           : [],
       })
     }
-    if (route === 'public/demo' && method === 'POST') {
-      if (!publicOpen())
-        fail(403, 'Temporary public preview has ended. Sign in for private access.')
-      limit('public-demo-global', 20)
-      const b = await body(r)
-      text(b.prompt, 'Message', 1000)
-      return reply({
-        content:
-          'I’m Rose Jade, an AI assistant. This limited public preview does not access private memories or run a paid model. Sign in for your private chat, memory, planning tools and document workspace.',
-      })
-    }
     if (route === 'auth/me' && method === 'GET') {
-      const u = getUser(r)
+      const u = await getUser(r)
       return reply({ user: u ? { id: u.id, email: u.email, role: u.role, plan: u.plan } : null })
     }
     if (['auth/login', 'auth/signup'].includes(route) && method === 'POST') {
       const b = await body(r)
       const address = email(b.email),
         password = text(b.password, 'Password', 128)
-      limit('login:' + address, 10, 900000)
-      let u = db().prepare('SELECT * FROM users WHERE email=?').get(address)
+      await limit('login:' + address, 10, 900000)
+      let u = await db().prepare('SELECT * FROM users WHERE email=?').get(address)
       if (route === 'auth/signup') {
-        if (!publicOpen()) fail(403, 'Public registration is currently closed.')
-        limit('signup-global', 30, 86400000)
+        if (!(await publicOpen())) fail(403, 'Public registration is currently closed.')
+        await limit('signup-global', 30, 86400000)
         if (password.length < 14) fail(400, 'Use a password of at least 14 characters.')
         if (u) fail(409, 'This email cannot be registered.')
         const userId = id()
-        db()
+        await db()
           .prepare('INSERT INTO users(id,email,password,role,profile,created) VALUES(?,?,?,?,?,?)')
           .run(userId, address, passwordHash(password), 'Member', JSON.stringify(defaults()), now())
-        u = db().prepare('SELECT * FROM users WHERE id=?').get(userId)
+        u = await db().prepare('SELECT * FROM users WHERE id=?').get(userId)
       } else {
         const valid = verifyPassword(password, u?.password || passwordHash('not-a-real-account'))
         if (!u || !valid) fail(401, 'Email or password is incorrect.')
       }
-      audit(u.id, 'session.login')
-      return reply({ ok: true }, 200, { 'Set-Cookie': cookie(session(u)) })
+      await audit(u.id, 'session.login')
+      return reply({ ok: true }, 200, { 'Set-Cookie': cookie(await session(u)) })
     }
-    const user = requireUser(r)
-    prune(user)
+    const user = await requireUser(r)
+    await prune(user)
     if (route === 'auth/logout' && method === 'POST') {
-      db()
+      await db()
         .prepare('DELETE FROM sessions WHERE token=?')
         .run(hash(token(r)))
       return reply({ ok: true }, 200, { 'Set-Cookie': cookie('', true) })
@@ -177,35 +167,39 @@ export default async function handle(r) {
         providers: providerStatus(),
         plans,
         billingReady: billingReady(),
-        publicUntil: publicUntil(),
-        threads: db()
+        publicUntil: await publicUntil(),
+        threads: await db()
           .prepare('SELECT * FROM threads WHERE user_id=? ORDER BY created DESC')
           .all(user.id),
-        messages: db()
+        messages: await db()
           .prepare('SELECT * FROM messages WHERE user_id=? ORDER BY created')
           .all(user.id),
-        memories: db()
+        memories: await db()
           .prepare('SELECT * FROM memories WHERE user_id=? ORDER BY created DESC')
           .all(user.id),
-        records: db()
-          .prepare('SELECT * FROM records WHERE user_id=? ORDER BY updated DESC')
-          .all(user.id)
-          .map(parseRecord),
-        artifacts: db()
+        records: (
+          await db()
+            .prepare('SELECT * FROM records WHERE user_id=? ORDER BY updated DESC')
+            .all(user.id)
+        ).map(parseRecord),
+        artifacts: await db()
           .prepare(
             'SELECT id,title,format,provider,created FROM artifacts WHERE user_id=? ORDER BY created DESC',
           )
           .all(user.id),
-        submissions: db()
+        submissions: await db()
           .prepare('SELECT * FROM submissions WHERE user_id=? ORDER BY created DESC')
           .all(user.id),
-        audit: db()
+        audit: await db()
           .prepare(
             'SELECT action,target,created FROM audit WHERE user_id=? ORDER BY created DESC LIMIT 50',
           )
           .all(user.id),
         connections: {
-          email: process.env.MAIL_MODE === 'smtp' ? 'SMTP configured' : 'Local MIME capture',
+          email:
+            process.env.MAIL_MODE === 'smtp'
+              ? 'SMTP configured'
+              : 'Cloud email drafts · no message sent',
           calendar: 'ICS export · no live calendar sync',
           livechat: 'Local conversation notes · no external chat connector',
         },
@@ -232,35 +226,36 @@ export default async function handle(r) {
         voiceConsent: b.voiceConsent === true,
         retentionDays: choice(Number(b.retentionDays), [7, 30, 90]),
       }
-      db().prepare('UPDATE users SET profile=? WHERE id=?').run(JSON.stringify(p), user.id)
-      audit(user.id, 'profile.update')
+      await db().prepare('UPDATE users SET profile=? WHERE id=?').run(JSON.stringify(p), user.id)
+      await audit(user.id, 'profile.update')
       return reply({ ok: true })
     }
     if (route === 'chat' && method === 'POST') {
-      limit('chat:' + user.id, 60)
+      await limit('chat:' + user.id, 60)
       const b = await body(r)
       const prompt = text(b.prompt, 'Message', 12000)
-      const provider = choice(b.provider, ['demo', 'ollama', 'openai'])
+      const provider = choice(b.provider, ['openai'])
       let threadId = b.threadId
-      if (threadId) owned('threads', user, threadId)
+      if (threadId) await owned('threads', user, threadId)
       else {
         threadId = id()
-        db()
+        await db()
           .prepare('INSERT INTO threads VALUES(?,?,?,?)')
           .run(threadId, user.id, prompt.slice(0, 70), now())
       }
-      const history = db()
-        .prepare(
-          'SELECT role,content FROM messages WHERE thread_id=? AND user_id=? ORDER BY created DESC LIMIT 12',
-        )
-        .all(threadId, user.id)
-        .reverse()
+      const history = (
+        await db()
+          .prepare(
+            'SELECT role,content FROM messages WHERE thread_id=? AND user_id=? ORDER BY created DESC LIMIT 12',
+          )
+          .all(threadId, user.id)
+      ).reverse()
       const content = await complete({ user, prompt, provider, history })
       const created = now()
-      db()
+      await db()
         .prepare('INSERT INTO messages VALUES(?,?,?,?,?,?,?)')
         .run(id(), user.id, threadId, 'user', prompt, provider, created)
-      db()
+      await db()
         .prepare('INSERT INTO messages VALUES(?,?,?,?,?,?,?)')
         .run(
           id(),
@@ -278,17 +273,17 @@ export default async function handle(r) {
       if (profileOf(user).memoryEnabled && cue) {
         const candidate = cue[1].trim().slice(0, 1500)
         if (candidate)
-          db()
+          await db()
             .prepare('INSERT INTO memories VALUES(?,?,?,?,?,?,?,?)')
             .run(id(), user.id, candidate, 'Preference', 'Pending', prompt.slice(0, 1600), 0, now())
       }
-      audit(user.id, 'chat.reply', provider)
+      await audit(user.id, 'chat.reply', provider)
       return reply({ threadId, content, provider })
     }
     if (route === 'memories' && method === 'POST') {
       const b = await body(r)
       const memoryId = id()
-      db()
+      await db()
         .prepare('INSERT INTO memories VALUES(?,?,?,?,?,?,?,?)')
         .run(
           memoryId,
@@ -304,8 +299,8 @@ export default async function handle(r) {
     }
     if (route === 'memories' && method === 'PATCH') {
       const b = await body(r)
-      owned('memories', user, b.id)
-      db()
+      await owned('memories', user, b.id)
+      await db()
         .prepare('UPDATE memories SET content=?,status=?,cloud=? WHERE id=? AND user_id=?')
         .run(
           text(b.content, 'Memory', 1500),
@@ -314,14 +309,14 @@ export default async function handle(r) {
           b.id,
           user.id,
         )
-      audit(user.id, 'memory.review', b.id)
+      await audit(user.id, 'memory.review', b.id)
       return reply({ ok: true })
     }
     if (route === 'memories' && method === 'DELETE') {
       const b = await body(r)
-      owned('memories', user, b.id)
-      db().prepare('DELETE FROM memories WHERE id=? AND user_id=?').run(b.id, user.id)
-      audit(user.id, 'memory.delete')
+      await owned('memories', user, b.id)
+      await db().prepare('DELETE FROM memories WHERE id=? AND user_id=?').run(b.id, user.id)
+      await audit(user.id, 'memory.delete')
       return reply({ ok: true })
     }
     if (route === 'records' && (method === 'POST' || method === 'PATCH')) {
@@ -332,7 +327,7 @@ export default async function handle(r) {
       const recordId = method === 'POST' ? id() : b.id
       let revision = 1
       if (method === 'PATCH') {
-        const old = owned('records', user, recordId)
+        const old = await owned('records', user, recordId)
         if (old.kind !== kind) fail(400, 'Record type cannot change.')
         if (['Sending', 'Sent', 'Delivery uncertain'].includes(old.status))
           fail(
@@ -349,10 +344,10 @@ export default async function handle(r) {
           ? ['Draft', 'To do', 'In progress', 'Done']
           : ['Draft', 'Reviewed', 'Archived'],
       )
-      const old = method === 'PATCH' ? owned('records', user, recordId) : null
-      db()
+      const old = method === 'PATCH' ? await owned('records', user, recordId) : null
+      const saved = await db()
         .prepare(
-          'INSERT INTO records VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET title=excluded.title,fields=excluded.fields,status=excluded.status,revision=excluded.revision,updated=excluded.updated',
+          'INSERT INTO records VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET title=excluded.title,fields=excluded.fields,status=excluded.status,revision=excluded.revision,updated=excluded.updated WHERE records.user_id=excluded.user_id AND records.revision=excluded.revision-1',
         )
         .run(
           recordId,
@@ -365,37 +360,39 @@ export default async function handle(r) {
           old?.created || now(),
           now(),
         )
-      audit(user.id, 'record.save', kind)
+      if (!saved.changes) fail(409, 'This record changed. Refresh before editing.')
+      await audit(user.id, 'record.save', kind)
       return reply({ id: recordId }, method === 'POST' ? 201 : 200)
     }
     if (route === 'records' && method === 'DELETE') {
       const b = await body(r)
-      owned('records', user, b.id)
-      db().prepare('DELETE FROM records WHERE id=? AND user_id=?').run(b.id, user.id)
-      audit(user.id, 'record.delete')
+      await owned('records', user, b.id)
+      await db().prepare('DELETE FROM records WHERE id=? AND user_id=?').run(b.id, user.id)
+      await audit(user.id, 'record.delete')
       return reply({ ok: true })
     }
     if (route === 'forms/submit' && method === 'POST') {
       const b = await body(r),
-        form = parseRecord(owned('records', user, b.id))
+        form = parseRecord(await owned('records', user, b.id))
       if (form.kind !== 'form') fail(400, 'Not a form.')
       if (!Array.isArray(b.answers) || b.answers.length !== form.fields.questions.length)
         fail(400, 'Answer every question.')
       const answers = b.answers.map((v) => text(v, 'Answer', 2000))
-      db()
+      await db()
         .prepare('INSERT INTO submissions VALUES(?,?,?,?,?)')
         .run(id(), user.id, form.id, JSON.stringify(answers), now())
       return reply({ ok: true }, 201)
     }
     if (route === 'calendar/export' && method === 'GET') {
-      const records = db()
-        .prepare("SELECT * FROM records WHERE user_id=? AND kind='event' AND status<>'Archived'")
-        .all(user.id)
-        .map(parseRecord)
+      const records = (
+        await db()
+          .prepare("SELECT * FROM records WHERE user_id=? AND kind='event' AND status<>'Archived'")
+          .all(user.id)
+      ).map(parseRecord)
       return download(calendar(records), 'text/calendar; charset=utf-8', 'rose-jade-calendar.ics')
     }
     if (route.startsWith('email/') && route.endsWith('/export') && method === 'GET') {
-      const record = parseRecord(owned('records', user, route.split('/')[1]))
+      const record = parseRecord(await owned('records', user, route.split('/')[1]))
       if (record.kind !== 'email') fail(400, 'Not an email.')
       const transport = nodemailer.createTransport({
         streamTransport: true,
@@ -412,7 +409,7 @@ export default async function handle(r) {
     }
     if (route === 'email/send' && method === 'POST') {
       const b = await body(r),
-        record = parseRecord(owned('records', user, b.id))
+        record = parseRecord(await owned('records', user, b.id))
       if (
         record.kind !== 'email' ||
         record.status !== 'Reviewed' ||
@@ -439,7 +436,7 @@ export default async function handle(r) {
         !process.env.MAIL_FROM
       )
         fail(503, 'SMTP configuration incomplete.')
-      const claimed = db()
+      const claimed = await db()
         .prepare(
           "UPDATE records SET status='Sending' WHERE id=? AND user_id=? AND status='Reviewed' AND revision=?",
         )
@@ -461,15 +458,15 @@ export default async function handle(r) {
           subject: record.fields.subject,
           text: record.fields.body,
         })
-        db()
+        await db()
           .prepare("UPDATE records SET status='Sent' WHERE id=? AND user_id=?")
           .run(record.id, user.id)
-        audit(user.id, 'email.smtp-accepted', record.id)
+        await audit(user.id, 'email.smtp-accepted', record.id)
         return reply({
           message: 'SMTP provider accepted the message; final delivery is not guaranteed.',
         })
       } catch {
-        db()
+        await db()
           .prepare("UPDATE records SET status='Delivery uncertain' WHERE id=? AND user_id=?")
           .run(record.id, user.id)
         fail(502, 'Delivery is uncertain. Check provider logs before attempting another send.')
@@ -496,7 +493,7 @@ export default async function handle(r) {
           : await complete({
               user,
               prompt: text(b.prompt, 'Instructions', 5000),
-              provider: choice(b.provider, ['demo', 'ollama', 'openai']),
+              provider: choice(b.provider, ['openai']),
               purpose: 'artifact',
             })
       if (format === 'json') {
@@ -507,15 +504,23 @@ export default async function handle(r) {
         }
       }
       const artifactId = id()
-      db()
+      await db()
         .prepare('INSERT INTO artifacts VALUES(?,?,?,?,?,?,?)')
-        .run(artifactId, user.id, title, content, format, b.provider || 'manual', now())
-      audit(user.id, 'artifact.create', format)
+        .run(
+          artifactId,
+          user.id,
+          title,
+          content,
+          format,
+          b.content?.trim() ? 'manual' : 'openai',
+          now(),
+        )
+      await audit(user.id, 'artifact.create', format)
       return reply({ id: artifactId }, 201)
     }
     if (route.startsWith('artifacts/') && method === 'GET') {
       const identifier = route.split('/')[1],
-        record = owned('artifacts', user, identifier)
+        record = await owned('artifacts', user, identifier)
       const format = new URL(r.url).searchParams.get('format') || record.format
       choice(format, ['md', 'txt', 'html', 'json', 'csv', 'py', 'js', 'ts', 'docx', 'pdf'])
       const result = await exportArtifact(record, format)
@@ -534,7 +539,7 @@ export default async function handle(r) {
       const content = await complete({
         user,
         prompt,
-        provider: choice(b.provider, ['demo', 'ollama', 'openai']),
+        provider: choice(b.provider, ['openai']),
       })
       return reply({ content })
     }
@@ -549,23 +554,24 @@ export default async function handle(r) {
     if (route === 'privacy/export' && method === 'GET') {
       const result = {
         profile: profileOf(user),
-        memories: db()
+        memories: await db()
           .prepare(
             'SELECT content,category,status,source,cloud,created FROM memories WHERE user_id=?',
           )
           .all(user.id),
-        threads: db().prepare('SELECT id,title,created FROM threads WHERE user_id=?').all(user.id),
-        messages: db()
+        threads: await db()
+          .prepare('SELECT id,title,created FROM threads WHERE user_id=?')
+          .all(user.id),
+        messages: await db()
           .prepare('SELECT role,content,provider,created,thread_id FROM messages WHERE user_id=?')
           .all(user.id),
-        records: db()
-          .prepare('SELECT * FROM records WHERE user_id=?')
-          .all(user.id)
-          .map(parseRecord),
-        artifacts: db()
+        records: (await db().prepare('SELECT * FROM records WHERE user_id=?').all(user.id)).map(
+          parseRecord,
+        ),
+        artifacts: await db()
           .prepare('SELECT title,content,format,provider,created FROM artifacts WHERE user_id=?')
           .all(user.id),
-        submissions: db()
+        submissions: await db()
           .prepare('SELECT form_id,answers,created FROM submissions WHERE user_id=?')
           .all(user.id),
       }
@@ -578,15 +584,14 @@ export default async function handle(r) {
     if (route === 'privacy/clear' && method === 'POST') {
       const b = await body(r)
       if (b.confirm !== 'DELETE HISTORY') fail(400, 'Type DELETE HISTORY to confirm.')
-      db().prepare('DELETE FROM threads WHERE user_id=?').run(user.id)
-      audit(user.id, 'history.clear')
+      await db().prepare('DELETE FROM threads WHERE user_id=?').run(user.id)
+      await audit(user.id, 'history.clear')
       return reply({ ok: true })
     }
     if (route === 'privacy/erase' && method === 'POST') {
       const b = await body(r)
       if (b.confirm !== 'ERASE WORKSPACE') fail(400, 'Type ERASE WORKSPACE to confirm.')
-      db().exec('BEGIN IMMEDIATE')
-      try {
+      await db().transaction(async () => {
         for (const table of [
           'submissions',
           'messages',
@@ -596,17 +601,13 @@ export default async function handle(r) {
           'artifacts',
           'audit',
         ])
-          db()
+          await db()
             .prepare('DELETE FROM ' + table + ' WHERE user_id=?')
             .run(user.id)
-        db()
+        await db()
           .prepare('UPDATE users SET profile=? WHERE id=?')
           .run(JSON.stringify(defaults()), user.id)
-        db().exec('COMMIT')
-      } catch (error) {
-        db().exec('ROLLBACK')
-        throw error
-      }
+      })
       return reply({
         message: 'Workspace data erased. Your login and subscription records remain.',
       })
@@ -617,13 +618,16 @@ export default async function handle(r) {
         fail(400, 'Current password is incorrect.')
       const password = text(b.password, 'New password', 128)
       if (password.length < 14) fail(400, 'Use at least 14 characters.')
-      db().prepare('UPDATE users SET password=? WHERE id=?').run(passwordHash(password), user.id)
-      db().prepare('DELETE FROM sessions WHERE user_id=?').run(user.id)
+      await db()
+        .prepare('UPDATE users SET password=? WHERE id=?')
+        .run(passwordHash(password), user.id)
+      await db().prepare('DELETE FROM sessions WHERE user_id=?').run(user.id)
       return reply({ ok: true }, 200, { 'Set-Cookie': cookie('', true) })
     }
     fail(404, 'Endpoint not found.')
   } catch (error) {
-    if (error instanceof HttpError) return reply({ error: error.message }, error.status)
+    if (error instanceof HttpError || error instanceof CloudConfigurationError)
+      return reply({ error: error.message }, error.status)
     console.error('Rose Jade operation failed:', error.message)
     return reply(
       { error: 'The operation failed. Check the server log; no success has been assumed.' },

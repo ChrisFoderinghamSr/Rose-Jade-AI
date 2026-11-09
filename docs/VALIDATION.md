@@ -1,16 +1,12 @@
-# Verification — November 9, 2026
+# Cloud-only verification — November 9, 2026
 
-- npm install: success; 59 packages audited, 0 known vulnerabilities reported at installation time.
-- npm run build: exit 0; Next.js 16.4.5 production pages, API routes and frame-policy proxy compiled.
-- npm run typecheck: exit 0.
-- npm test: exit 0; **9 tests passed, 0 failed** (parent integration plus eight subtests), final duration **6590.5613 ms**.
+- Production build: passed, Next.js 15.5.29.
+- TypeScript checks: passed.
+- Automated checks: 13 passed, 0 failed; duration 18162.1522 ms.
+- Dependency audit: 0 vulnerabilities reported.
 
-Coverage includes temporary public access and expiry; authentication/origin protection; cross-account isolation; private chat persistence; explicit memory proposals, approval and cloud sharing; local/cloud model payloads; records/revision checks; MIME/ICS exports; private forms and preserved responses; public portfolio field projections; real DOCX/PDF generation and protected downloads; PayPal preview, invalid-signature rejection, verified plan matching and duplicate webhook handling; server restart persistence and user-scoped privacy deletion.
+Integration checks execute PostgreSQL statements through test-only PGlite, with AWS Data API, Secrets Manager, OpenAI and PayPal transports mocked. They cover authentication, temporary public access/expiry, account isolation, consent and approved memory filtering, chat/record persistence, revision checks, exports, private forms, public portfolio fields, billing signature/plan verification and duplicate events, restart persistence and user-scoped privacy deletion. Contract checks cover parameter conversion/types, absent cloud configuration, and removal of offline runtime imports.
 
-All model and PayPal requests in automated checks were intercepted by controlled test-only mocks. This tests transport and application behavior, not live provider availability or actual merchant payments. No cloud model, installed Ollama model, real SMTP recipient or PayPal subscription was contacted. Voice/microphone input was not exercised. PayPal cancellation and actual external approval need sandbox acceptance testing with the operator's provider settings.
+No real AWS database, model request, SMTP message or PayPal payment was used. Deployment, IAM permissions, database migration, DNS/TLS, live provider availability and PayPal sandbox acceptance remain operator verification tasks. Docker examples were not built. This update does not provision cloud resources or migrate historical SQLite data. Historical local files remain ignored and untouched.
 
-Browser: public landing page and fictional character portrait inspected. Owner login worked, the chat accepted a message, a memory remained Pending, and sign-out returned to the limited public page. The character is displayed above the chat and again beside the composer. Screenshots were saved outside the repository. No comprehensive accessibility or cross-browser certification is asserted.
-
-The original scaffold was backed up before implementation. Existing Git metadata and origin were preserved. Private runtime data, generated owner credentials, .env files, models and dependencies are excluded from the repository. The generated fictional-character PNG is an intentional public app asset.
-
-Docker/Compose and reverse-proxy examples are supplied but were not built/run in this Windows verification. GitHub CI validates on Linux/Node 24 after push. Live DNS, hosting deployment, HTTPS, model credentials, SMTP and PayPal merchant settings are external setup tasks; their success must not be inferred from a code push.
+The application build succeeds without credentials; runtime features require configured cloud services. See CLOUD-SETUP.md for exact setup. GitHub CI independently repeats installation, build, type checks, tests and audit on Node 22 after push.

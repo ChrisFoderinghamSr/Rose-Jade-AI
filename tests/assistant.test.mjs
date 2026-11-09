@@ -2,11 +2,14 @@ import { pathToFileURL } from 'node:url'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
+import { createRequire } from 'node:module'
+const requireWeb = createRequire(pathToFileURL(path.resolve('apps/web/package.json')))
+
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import os from 'node:os'
 import net from 'node:net'
-test('Rose Jade production-server integration', { timeout: 150000 }, async (t) => {
+test('Rose Jade cloud-only PostgreSQL integration', { timeout: 150000 }, async (t) => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'rose-jade-test-'))
   const socket = net.createServer()
   await new Promise((r) => socket.listen(0, '127.0.0.1', r))
@@ -28,8 +31,8 @@ test('Rose Jade production-server integration', { timeout: 150000 }, async (t) =
       process.execPath,
       [
         '--import',
-        pathToFileURL(path.resolve('tests/provider-mock.mjs')).href,
-        path.resolve('node_modules/next/dist/bin/next'),
+        pathToFileURL(path.resolve('tests/cloud-preload.mjs')).href,
+        requireWeb.resolve('next/dist/bin/next'),
         'start',
         '--hostname',
         '127.0.0.1',
@@ -40,7 +43,12 @@ test('Rose Jade production-server integration', { timeout: 150000 }, async (t) =
         cwd: path.resolve('apps/web'),
         env: {
           ...process.env,
-          ROSE_DATA_DIR: dir,
+          TEST_PG_DIR: path.join(dir, 'postgres'),
+          AWS_REGION: 'us-east-2',
+          RDS_CLUSTER_ARN: 'arn:aws:rds:us-east-2:000000000000:cluster:test',
+          RDS_SECRET_ARN: 'arn:aws:secretsmanager:us-east-2:000000000000:secret:test',
+          RDS_DATABASE: 'rosejade',
+          APP_CONFIG_SECRET_ARN: 'arn:aws:secretsmanager:us-east-2:000000000000:secret:config',
           APP_ORIGIN: base,
           COOKIE_SECURE: 'false',
           ROSE_PUBLIC_DEPLOYMENT: 'false',
@@ -118,7 +126,7 @@ test('Rose Jade production-server integration', { timeout: 150000 }, async (t) =
   }
   try {
     await start()
-    const owner = JSON.parse(await readFile(path.join(dir, 'owner-access.json'), 'utf8'))
+    const owner = { email: 'owner@example.org', password: 'Cloud-test-owner-password-123!' }
     await t.test('temporary public access, protected state and authentication', async () => {
       assert.equal((await fetch(base)).status, 200)
       assert.equal((await fetch(base + '/embed')).status, 200)
@@ -128,21 +136,17 @@ test('Rose Jade production-server integration', { timeout: 150000 }, async (t) =
         403,
       )
       await login('owner', owner.email, owner.password)
+      await api('profile', 'owner', 'PATCH', { ...(await state()).profile, cloudConsent: true })
       ownerId = (await state()).user.id
       await login('other', 'other@example.org', 'Unique-other-password-123!', true)
-      assert.equal(
-        (
-          await (await api('public/demo', null, 'POST', { prompt: 'Hello' })).json()
-        ).content.includes('limited public preview'),
-        true,
-      )
+      assert.equal((await api('public/demo', null, 'POST', { prompt: 'Hello' })).status, 401)
     })
     await t.test(
       'chat persistence, memory proposal, explicit approval, edit and isolation',
       async () => {
         let r = await api('chat', 'owner', 'POST', {
           prompt: 'Remember that I prefer concise answers',
-          provider: 'demo',
+          provider: 'openai',
         })
         assert.equal(r.status, 200)
         threadId = (await r.json()).threadId
@@ -174,16 +178,16 @@ test('Rose Jade production-server integration', { timeout: 150000 }, async (t) =
         r = await api('chat', 'owner', 'POST', {
           threadId,
           prompt: 'What do you remember about me?',
-          provider: 'demo',
+          provider: 'openai',
         })
-        assert.match((await r.json()).content, /concise answers/)
+        assert.equal((await r.json()).content, 'Mock cloud transport response')
         assert.equal((await state('other')).messages.length, 0)
         assert.equal(
           (
             await api('chat', 'other', 'POST', {
               threadId,
               prompt: 'Read private data',
-              provider: 'demo',
+              provider: 'openai',
             })
           ).status,
           404,
@@ -191,14 +195,21 @@ test('Rose Jade production-server integration', { timeout: 150000 }, async (t) =
       },
     )
     await t.test(
-      'local and cloud adapters, consent and memory-sharing filter (mock transports)',
+      'cloud-only adapter, consent and memory-sharing filter (mock transport)',
       async () => {
-        let r = await api('chat', 'owner', 'POST', { prompt: 'Hello', provider: 'ollama' })
-        assert.equal(r.status, 200)
-        assert.equal((await r.json()).content, 'Mock local transport response')
+        let r
+        assert.equal(
+          (await api('chat', 'owner', 'POST', { prompt: 'Hello', provider: 'ollama' })).status,
+          400,
+        )
+        await api('profile', 'owner', 'PATCH', { ...(await state()).profile, cloudConsent: false })
         assert.equal(
           (await api('chat', 'owner', 'POST', { prompt: 'Hello', provider: 'openai' })).status,
           403,
+        )
+        assert.equal(
+          (await api('chat', 'owner', 'POST', { prompt: 'Hello', provider: 'demo' })).status,
+          400,
         )
         const p = (await state()).profile
         assert.equal(
@@ -311,7 +322,7 @@ test('Rose Jade production-server integration', { timeout: 150000 }, async (t) =
         title: 'Test report',
         format: 'md',
         content: 'A fictional report\n\nOne clear next step.',
-        provider: 'demo',
+        provider: 'openai',
       })
       assert.equal(r.status, 201)
       artifactId = (await r.json()).id
@@ -358,11 +369,19 @@ test('Rose Jade production-server integration', { timeout: 150000 }, async (t) =
         assert.equal((await state()).artifacts.length, 1)
         assert.equal((await state()).memories[0].status, 'Approved')
         assert.equal((await (await api('public')).json()).open, false)
-        assert.equal((await api('public/demo', null, 'POST', { prompt: 'Hello' })).status, 403)
+        assert.equal(
+          (
+            await api('auth/signup', null, 'POST', {
+              email: 'closed@example.org',
+              password: 'Strong-closed-password-123!',
+            })
+          ).status,
+          403,
+        )
         const exported = await api('privacy/export', 'owner')
         assert.equal(exported.status, 200)
         const raw = await exported.text()
-        assert.doesNotMatch(raw, /password|rose_session|mock-only/)
+        assert.doesNotMatch(raw, /password|rose_session|mock-only|mock-cloud-only-key/)
         assert.equal(
           (await api('privacy/clear', 'other', 'POST', { confirm: 'DELETE HISTORY' })).status,
           200,

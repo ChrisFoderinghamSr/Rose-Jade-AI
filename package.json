@@ -14,16 +14,21 @@
     "build": "npm run build --workspace=@rose-jade/web",
     "typecheck": "npm run typecheck --workspace=@rose-jade/web",
     "test": "node --test tests/*.test.mjs",
-    "accounts": "node scripts/owner-access.mjs",
     "format": "prettier --write apps/web packages/*/src tests scripts",
-    "format:check": "prettier --check apps/web packages/*/src tests scripts"
+    "format:check": "prettier --check apps/web packages/*/src tests scripts",
+    "db:migrate": "node scripts/cloud-migrate.mjs",
+    "check:cloud": "node scripts/check-cloud.mjs"
   },
   "engines": {
-    "node": ">=24.0.0",
+    "node": ">=22.0.0",
     "npm": ">=10.0.0"
   },
   "devDependencies": {
     "prettier": "^3.6.2",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "@electric-sql/pglite": "latest"
+  },
+  "overrides": {
+    "postcss": "^8.5.23"
   }
 }

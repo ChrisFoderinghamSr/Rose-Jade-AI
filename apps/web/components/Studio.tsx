@@ -85,7 +85,7 @@ export default function Studio() {
     [tab, setTab] = useState('Conversation'),
     [message, setMessage] = useState(''),
     [busy, setBusy] = useState(false),
-    [provider, setProvider] = useState('demo'),
+    [provider] = useState('openai'),
     [prompt, setPrompt] = useState(''),
     [thread, setThread] = useState(''),
     [kind, setKind] = useState('task'),
@@ -98,7 +98,9 @@ export default function Studio() {
   const recognition = useRef<any>(null),
     bottom = useRef<HTMLDivElement>(null)
   async function load() {
-    const me = await (await fetch('/api/auth/me')).json()
+    const response = await fetch('/api/auth/me')
+    const me = await response.json()
+    if (!response.ok) throw Error(me.error || 'Cloud connection is unavailable.')
     if (me.user) {
       const r = await fetch('/api/state', { cache: 'no-store' })
       const b = await r.json()
@@ -267,26 +269,14 @@ export default function Studio() {
               {pub?.open
                 ? 'Temporary public preview ends ' +
                   new Date(pub.until).toLocaleDateString() +
-                  '. Public chat is a limited demonstration.'
+                  '. Public portfolio viewing and new registrations are temporary.'
                 : 'Temporary public preview and registration are closed.'}
             </div>
             {pub?.open && (
-              <form
-                onSubmit={async (e) => {
-                  const r = await form(e, 'public/demo')
-                  if (r) setPublicReply(r.content)
-                }}
-              >
-                <Field
-                  label="Try the public preview"
-                  name="prompt"
-                  value="What can Rose Jade help me do?"
-                />
-                <button className="button outline" disabled={busy}>
-                  Try limited demo
-                </button>
-                {publicReply && <p className="demo-answer">{publicReply}</p>}
-              </form>
+              <p className="fine">
+                Public visitors can explore the offering. Sign in for your own private cloud AI
+                workspace.
+              </p>
             )}
           </div>
           <div className="panel auth-card">
@@ -302,7 +292,7 @@ export default function Studio() {
               <small>
                 {signup
                   ? 'Use at least 14 characters. Paid plans are optional and configured separately.'
-                  : 'Local owner: run npm.cmd run accounts in the repository to view generated access.'}
+                  : 'Your account is managed in the cloud. Contact the operator if you need access.'}
               </small>
               <button className="button primary" disabled={busy}>
                 {busy ? 'Opening…' : signup ? 'Create workspace' : 'Sign in'} <span>↗</span>
@@ -385,13 +375,7 @@ export default function Studio() {
             <span className="online-dot" /> Your private workspace
           </span>
           <div>
-            <span className="provider-badge">
-              {provider === 'demo'
-                ? 'Local demo'
-                : provider === 'ollama'
-                  ? 'Local model'
-                  : 'Cloud AI'}
-            </span>
+            <span className="provider-badge">Cloud AI only</span>
             <button onClick={() => run('auth/logout', {})}>Sign out ↗</button>
           </div>
         </header>
@@ -407,18 +391,9 @@ export default function Studio() {
               </p>
             </div>
             {tab !== 'Privacy & profile' && (
-              <label className="model-picker">
-                AI provider
-                <select value={provider} onChange={(e) => setProvider(e.target.value)}>
-                  <option value="demo">Local demo · no model</option>
-                  <option value="ollama">
-                    Local model · {data.providers.ollama.ready ? 'configured' : 'setup needed'}
-                  </option>
-                  <option value="openai">
-                    Cloud AI · {data.providers.openai.ready ? 'configured' : 'setup needed'}
-                  </option>
-                </select>
-              </label>
+              <span className="provider-badge">
+                Cloud AI · {data.providers.openai.ready ? 'configured' : 'setup required'}
+              </span>
             )}
           </div>
           {message && (
@@ -537,9 +512,7 @@ export default function Studio() {
                   </div>
                 </form>
                 <p className="chat-foot">
-                  {provider === 'demo'
-                    ? 'Demo replies use transparent templates. Configure a model for open-ended AI.'
-                    : 'AI can make mistakes. Confirm facts and review drafts.'}
+                  {'Cloud AI can make mistakes. Confirm facts and review drafts.'}
                 </p>
               </div>
               <aside className="context-rail">
@@ -957,8 +930,8 @@ export default function Studio() {
                   </button>
                 </form>
                 <p className="fine">
-                  Local demo creates a clearly labeled planning template. Configured models support
-                  open-ended drafting. PDF uses a basic Latin-1 font; DOCX/text retain Unicode.
+                  Cloud AI creates drafts from your instructions. You can also save exact content
+                  without a model request. PDF uses a basic Latin-1 font; DOCX/text retain Unicode.
                 </p>
               </section>
               <section className="panel">
@@ -1188,12 +1161,8 @@ export default function Studio() {
               )}
               <div className="two-col spaced">
                 <section className="panel">
-                  <h2>Local & cloud AI</h2>
-                  <p>
-                    Local model: {data.providers.ollama.label}
-                    <br />
-                    Cloud model: {data.providers.openai.label}
-                  </p>
+                  <h2>Cloud AI connection</h2>
+                  <p>Cloud model: {data.providers.openai.label}</p>
                   <p>
                     Set provider configuration on the server. API keys are never entered into this
                     browser or sent with exported workspace data. No model weights are bundled.
@@ -1318,7 +1287,7 @@ function PlanCards({
           </h3>
           <p>Private chat, reviewed memory, planning tools and file creation.</p>
           <ul>
-            <li>Local-model access</li>
+            <li>Cloud-hosted personal workspace</li>
             <li>{p.allowance} cloud AI requests / calendar month</li>
             <li>Document & portfolio workspace</li>
           </ul>

@@ -46,37 +46,37 @@ export function token(r) {
       ?.slice(13) || ''
   )
 }
-export function getUser(r) {
+export async function getUser(r) {
   return (
-    db()
+    (await db()
       .prepare(
         'SELECT u.* FROM users u JOIN sessions s ON s.user_id=u.id WHERE s.token=? AND s.expires>?',
       )
-      .get(hash(token(r)), Date.now()) || null
+      .get(hash(token(r)), Date.now())) || null
   )
 }
-export function requireUser(r) {
-  const user = getUser(r)
+export async function requireUser(r) {
+  const user = await getUser(r)
   if (!user) fail(401, 'Sign in to your private workspace.')
   return user
 }
-export function session(user) {
+export async function session(user) {
   const token = randomBytes(32).toString('hex')
-  db().prepare('DELETE FROM sessions WHERE expires<?').run(Date.now())
-  db()
+  await db().prepare('DELETE FROM sessions WHERE expires<?').run(Date.now())
+  await db()
     .prepare('INSERT INTO sessions VALUES(?,?,?)')
     .run(hash(token), user.id, Date.now() + 28800000)
   return token
 }
-export function limit(key, max = 30, period = 3600000) {
+export async function limit(key, max = 30, period = 3600000) {
   key = hash(key)
-  const d = db(),
-    row = d.prepare('SELECT * FROM limits WHERE key=?').get(key)
-  if (row && row.reset > Date.now() && row.count >= max)
-    fail(429, 'Usage limit reached. Please try again later.')
-  if (!row || row.reset < Date.now())
-    d.prepare('INSERT OR REPLACE INTO limits VALUES(?,?,?)').run(key, 1, Date.now() + period)
-  else d.prepare('UPDATE limits SET count=count+1 WHERE key=?').run(key)
+  const current = Date.now()
+  const row = await db()
+    .prepare(
+      'INSERT INTO limits(key,count,reset) VALUES(?,1,?) ON CONFLICT(key) DO UPDATE SET count=CASE WHEN limits.reset<=? THEN 1 ELSE limits.count+1 END,reset=CASE WHEN limits.reset<=? THEN excluded.reset ELSE limits.reset END RETURNING count',
+    )
+    .get(key, current + period, current, current)
+  if (row.count > max) fail(429, 'Usage limit reached. Please try again later.')
 }
 export async function body(r, max = 150000) {
   if (Number(r.headers.get('content-length') || 0) > max) fail(413, 'Request too large.')
@@ -101,10 +101,10 @@ export function https(value) {
     fail(400, 'Use a valid HTTPS URL.')
   }
 }
-export function owned(table, user, identifier) {
+export async function owned(table, user, identifier) {
   if (!['records', 'artifacts', 'threads', 'memories'].includes(table))
     throw Error('Invalid internal table')
-  const row = db()
+  const row = await db()
     .prepare('SELECT * FROM ' + table + ' WHERE id=? AND user_id=?')
     .get(text(identifier, 'Record ID', 100), user.id)
   if (!row) fail(404, 'Record not found.')
