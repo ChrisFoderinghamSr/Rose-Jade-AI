@@ -11,8 +11,23 @@ console.log(
       ? 'set'
       : 'not set (server environment secrets must be supplied directly)'),
 )
-if (process.env.APP_ORIGIN && !process.env.APP_ORIGIN.startsWith('https://')) {
-  console.log('Hosted APP_ORIGIN must use HTTPS.')
-  failed = true
+if (process.env.APP_ORIGIN) {
+  try {
+    const origin = new URL(process.env.APP_ORIGIN)
+    if (origin.protocol !== 'https:' || origin.origin !== process.env.APP_ORIGIN) throw new Error()
+  } catch {
+    console.error('Hosted APP_ORIGIN must be a bare HTTPS origin.')
+    failed = true
+  }
+}
+if (!failed && process.argv.includes('--connect')) {
+  try {
+    const { db } = await import('../packages/core/src/db.mjs')
+    await db().prepare('SELECT 1 AS ready').get()
+    console.log('Database connection verified with the current runtime identity.')
+  } catch {
+    console.error('Database connection failed. Check the Data API, region, runtime role and secret references.')
+    failed = true
+  }
 }
 if (failed) process.exitCode = 1

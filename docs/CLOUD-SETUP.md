@@ -25,7 +25,7 @@ $env:RDS_SECRET_ARN='your-database-secret-arn'
 $env:RDS_DATABASE='rosejade'
 $env:APP_CONFIG_SECRET_ARN='your-application-config-secret-arn'
 $env:APP_ORIGIN='https://your-current-hostname'
-npm.cmd run check:cloud
+npm.cmd run check:cloud -- --connect
 npm.cmd run db:migrate
 ```
 
